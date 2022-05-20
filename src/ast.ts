@@ -67,12 +67,16 @@ export function getEmitsByArray(ast: ArrayExpression): Emit[] {
     return emit;
   });
 }
-
+/**
+ * 
+ * @param ast 
+ * @returns 
+ */
 export function getMethodsByObject(ast: ObjectExpression): Method[] {
   const methods: Method[] = [];
 
   ast.properties.map((item) => {
-    if (t.isObjectMethod(item)) {
+    if (t.isObjectMethod(item) || t.isObjectProperty(item)) {
       const method: Method = {
         name: getAstValue(item.key),
         desc: "",
@@ -83,14 +87,14 @@ export function getMethodsByObject(ast: ObjectExpression): Method[] {
       const comments = item.leadingComments || [];
       const comment = comments.filter((item) => {
         return (
-          item.type === "CommentBlock" && item.value.includes("@vue-docs-ref")
+          item.type === "CommentBlock"
         );
       })[0];
 
       if (comment) {
         const commentArr = commentParse(`/*${comment.value}\n*/`) || [];
         const commentTag = commentArr[0].tags;
-        if (commentTag && commentTag[0].tag === "vue-docs-ref") {
+        if (commentTag) {
           commentTag.map((item) => {
             switch (item.tag) {
               case "description": {
@@ -115,9 +119,9 @@ export function getMethodsByObject(ast: ObjectExpression): Method[] {
             }
           });
           method.params = methodProps;
-          methods.push(method);
         }
       }
+      methods.push(method);
     }
   });
 

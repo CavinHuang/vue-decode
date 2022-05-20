@@ -2,6 +2,7 @@ import { babelParse, compileScript, parse, SFCScriptBlock } from "@vue/compiler-
 import traverse, { NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
 import { ArrayExpression, ObjectExpression } from "@babel/types";
+import mergeDeep from "merge-deep";
 import {
   getPropsByObject,
   getAstValue,
@@ -13,12 +14,15 @@ import {
 import { toLine } from "./utils";
 import { Component, Emit, Method, Prop, RenderData } from "./type";
 
+let id = 'xxxxxxxx'
 // 返回code信息
 export function vueToJsonData(
   code: string
-): { content: RenderData; component: Component } | null {
+): Component | null {
   const { descriptor, errors } = parse(code);
-  debugger
+  const script = compileScript(descriptor, {
+    id
+  })
   const componentData: Component = {
     name: "",
   };
@@ -28,8 +32,10 @@ export function vueToJsonData(
     return null;
   }
 
-  if (descriptor.script) {
-    const { name, emits, methods, props } = handleScript(descriptor.script);
+  // const script = descriptor.script || descriptor.scriptSetup
+
+  if (script) {
+    const { name, emits, methods, props } = handleScript(script);
     componentData.name = name;
     componentData.emits = emits;
     componentData.methods = methods;
@@ -42,14 +48,14 @@ export function vueToJsonData(
   }
 
   if (componentData) {
-    const result = componentToLayoutData(componentData);
-    return {
-      content: result,
-      component: componentData,
-    };
+    // const result = componentToLayoutData(componentData);
+    // return {
+    //   content: result,
+    //   component: componentData,
+    // };
   }
 
-  return null;
+  return componentData;
 }
 
 export function handleScript(script: SFCScriptBlock): Component {
@@ -71,7 +77,7 @@ export function handleScript(script: SFCScriptBlock): Component {
       if (path.isCallExpression()) {
         path.node.arguments.map((item) => {
           if (t.isObjectExpression(item)) {
-            component = handleExportDefault(item);
+            component = mergeDeep(component, handleExportDefault(item))
           }
         });
       }
@@ -79,7 +85,7 @@ export function handleScript(script: SFCScriptBlock): Component {
       else if (path.isExportDefaultDeclaration()) {
         const declaration = path.node.declaration;
         if (t.isObjectExpression(declaration)) {
-          component = handleExportDefault(declaration);
+          component = mergeDeep(component, handleExportDefault(declaration))
         }
       }
     },
@@ -137,6 +143,30 @@ function handleExportDefault(ast: ObjectExpression): Component {
           break;
         }
       }
+    } else if (t.isObjectMethod(vueParams)) {
+      //  && vueParams.key.name === 'setup'
+      const bodys = vueParams.body.body
+      bodys.forEach(item => {
+        if (t.isExpressionStatement(item)) {
+          const expression = item.expression
+          if (t.isCallExpression(expression)) {
+            const callee = expression.callee
+            const name = getAstValue(callee)
+            if (name === 'expose') {
+              const items = expression.arguments.map(arg => {
+                if (t.isObjectExpression(arg)) {
+                  const methods = getMethodsByObject(arg)
+                  return methods
+                }
+                return null
+              })
+              ;(items.filter(item => item !== null) as Method[][]).map((item: Method[]) => {
+                methods.push(...item)
+              })
+            }
+          }
+        }
+      })
     }
   });
 
